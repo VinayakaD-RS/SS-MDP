@@ -1,4 +1,4 @@
-//lit
+//leaf node mappings
 import { LitElement, html, css } from 'lit';
 import { MixinManager } from '@riversandtechnologies/ui-platform-elements/lib/managers/mixin-manager.js';
 import { RufElement } from '@riversandtechnologies/ui-platform-elements/lib/base/ruf-element.js';
