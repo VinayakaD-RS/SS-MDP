@@ -201,6 +201,12 @@ class RockRelationshipMappings extends MixinManager(LitElement).with(AppBase, Ru
             'domain-changed': {
                 name: 'domain-changed'
             },
+            'relationship-changed': {
+                name: 'relationship-changed'
+            },
+            'context-changed': {
+                name: 'context-changed'
+            },
             'reset-mapped-filters': {
                 name: 'reset-mapped-filters'
             },
@@ -254,6 +260,14 @@ class RockRelationshipMappings extends MixinManager(LitElement).with(AppBase, Ru
             }
             case 'domain-changed': {
                 this.onDomainChange(detail);
+                break;
+            }
+            case 'relationship-changed': {
+                this.onRelationshipChange(detail);
+                break;
+            }
+            case 'context-changed': {
+                this.onContextChange(detail);
                 break;
             }
             case 'reset-mapped-filters': {
@@ -719,9 +733,11 @@ class RockRelationshipMappings extends MixinManager(LitElement).with(AppBase, Ru
      * Function to update the target grid about the selected source
      */
     onSourceChange(detail) {
-        let source = detail?.source;
-        if (this.targetGrid) {
+        const source = detail?.source;
+        if (detail.grid === "target" && this.targetGrid) {
             this.targetGrid.updateUserSelectedSource(source);
+        } else if (detail.grid === "source" && this.sourceGrid) {
+            this.sourceGrid.updateUserSelectedSourceInTarget(source);
         }
     }
 
@@ -729,9 +745,29 @@ class RockRelationshipMappings extends MixinManager(LitElement).with(AppBase, Ru
      * Function to update the target grid about the selected domain
      */
     onDomainChange(detail) {
-        let domain = detail?.domain;
+        const domain = detail?.domain;
         if (this.targetGrid) {
             this.targetGrid.updateUserSelectedDomain(domain);
+        }
+    }
+
+    /**
+     * Function to update the source grid about the selected relationship in target grid
+     */
+    onRelationshipChange(detail) {
+        const relationship = detail?.relationship?.relationshipName;
+        if (this.sourceGrid) {
+            this.sourceGrid.updateUserSelectedRelationshipInTarget(relationship);
+        }
+    }
+
+    /**
+     * Function to update the source grid about the selected context in target grid
+     */
+    onContextChange(detail) {
+        const context = detail?.context?.id;
+        if (this.sourceGrid) {  
+            this.sourceGrid.updateUserSelectedContextInTarget(context);
         }
     }
 
