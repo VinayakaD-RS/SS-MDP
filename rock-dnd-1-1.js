@@ -965,16 +965,14 @@ class RockDragDropGrid extends MixinManager(LitElement).with(ComponentConfigBase
             }
         }
 
-        //Update the source info to the target grid
-        if (this.configType == 'source') {
-            const sourceChanged = this.aci.createAction({
-                name: 'source-changed',
-                detail: {
-                    source: this._selectedSource
-                }
-            });
-            this.aci.dispatch(sourceChanged);
-        }
+        const sourceChanged = this.aci.createAction({
+            name: 'source-changed',
+            detail: {
+                source: this._selectedSource,
+                grid: this.configType
+            }
+        });
+        this.aci.dispatch(sourceChanged);
     }
 
     /**
@@ -1068,6 +1066,14 @@ class RockDragDropGrid extends MixinManager(LitElement).with(ComponentConfigBase
                 this._previousSelectedRel.tagValues = this.relationshipLov.tagValues;
             }
         }
+
+        const relationshipChanged = this.aci.createAction({
+            name: 'relationship-changed',
+            detail: {
+                relationship: this._selectedRelationship
+            }
+        });
+        this.aci.dispatch(relationshipChanged);
     }
 
     /**
@@ -1285,6 +1291,8 @@ class RockDragDropGrid extends MixinManager(LitElement).with(ComponentConfigBase
             } else {
                 this.loadGridBasedOnSelectedContext();
             }
+
+            this._alertSourceAboutSelectedContext();
         }
     }
     closeContextPopover() {
@@ -1294,6 +1302,7 @@ class RockDragDropGrid extends MixinManager(LitElement).with(ComponentConfigBase
         }
         this._isReadyToShowContextPopover = false;
     }
+
     async prepareContextSelectorData() {
         if (!ContextModelManager.isContextModelsPrepared) {
             await ContextModelManager.loadContextModels();
@@ -1330,6 +1339,7 @@ class RockDragDropGrid extends MixinManager(LitElement).with(ComponentConfigBase
         };
         this._ctxData = rData;
     }
+
     loadGridBasedOnSelectedContext() {
         //Reset the mapped filters
         this.resetMappedFilter();
@@ -1337,6 +1347,16 @@ class RockDragDropGrid extends MixinManager(LitElement).with(ComponentConfigBase
         //Reload the grid
         this._reloadGridConfig();
         // await this.reloadGrid();
+    }
+
+    _alertSourceAboutSelectedContext(){
+        const contextChanged = this.aci.createAction({
+            name: 'context-changed',
+            detail: {
+                domain: this._selectedContext
+            }
+        });
+        this.aci.dispatch(contextChanged);
     }
 
     /**
@@ -2152,6 +2172,8 @@ class RockDragDropGrid extends MixinManager(LitElement).with(ComponentConfigBase
             }
             mappedEntities = RelMappingHelper.getMappedToRelIdsFromEntities(entities, this.mappedRelName, relToType);
             mappedEntitiesData = await this._getMappedEntitiesData(mappedEntities, sourceEntityExternalAttributeName);
+        } else if (this.configType === "source"){
+
         }
 
         let clonedContextData = this._getUserSelectedContextData();
@@ -2932,6 +2954,8 @@ class RockDragDropGrid extends MixinManager(LitElement).with(ComponentConfigBase
         const mappingRequestExists = !sourceExistsInTempArray && await RelMappingHelper.mappingRequestExists(sourceId, relationship, contextInfo);
         const isSourceMappedToTarget = !mappingRequestExists && await RelMappingHelper.isSourceMappedToTarget(sourceId, sourceType, targetType, relationship, contextInfo);
 
+
+
         return isSourceMappedToTarget || mappingRequestExists || sourceExistsInTempArray;
     }
 
@@ -3228,6 +3252,29 @@ class RockDragDropGrid extends MixinManager(LitElement).with(ComponentConfigBase
             columns: [statusColumn],
             rowNodes: [params.node]
         });
+    }
+
+    /**
+     * Function of source grid to update the user selected source in target grid
+     */
+    updateUserSelectedSourceInTarget(source) {
+        this._userSelectedSourceInTarget = source;
+    }
+
+    /**
+     * Function of source grid to update the user selected context in target grid
+     */
+    updateUserSelectedContextInTarget(context) {
+        this._userSelectedContextInTarget = context;
+        this._loadGrid();
+    }
+
+    /**
+     * Function of source grid to update the user selected relationship in target grid
+     */
+    updateUserSelectedRelationshipInTarget(relationship) {
+        this._userSelectedRelationshipInTarget = relationship;
+        this._loadGrid();
     }
 
     /**
