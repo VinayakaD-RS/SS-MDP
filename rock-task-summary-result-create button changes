@@ -1,0 +1,771 @@
+import { LitElement, html } from 'lit';
+
+import 'ui-platform-elements/lib/styles/bedrock-style-icons.js';
+import 'ui-platform-elements/lib/elements/pebble-spinner/pebble-spinner.js';
+import 'ui-platform-elements/lib/elements/bedrock-grid/bedrock-grid.js';
+import { MixinManager } from 'ui-platform-elements/lib/managers/mixin-manager.js';
+import { RufElement } from 'ui-platform-elements/lib/base/ruf-element.js';
+import { styles as sharedStyles } from 'ui-platform-elements/lib/flow/core/base/shared.element.css.js';
+import { BedrockGridDataSource } from 'ui-platform-elements/lib/base/BedrockGridDataSource.js';
+import { QueryParamsUtils } from 'ui-platform-elements/lib/utils/QueryParamsUtils.js';
+import 'ui-platform-elements/lib/elements/pebble-accordion/pebble-accordion.js';
+import { getCustomStylesForLit } from 'ui-platform-elements/lib/utils/getCustomStylesForLit.js';
+import { LoggerManager } from 'ui-platform-elements/lib/managers/logger-manager';
+import { OSElements } from 'ui-platform-elements/lib/base/os-elements.js';
+
+import { AttributeUtils } from 'ui-platform-utils/lib/mdm/AttributeUtils.js';
+import { Constants } from 'ui-platform-utils/lib/mdm/Constants.js';
+import { ObjectUtils } from 'ui-platform-utils/lib/common/ObjectUtils.js';
+import { DateTimeFormatUtils } from 'ui-platform-utils/lib/common/DateTimeFormatUtils';
+
+import { TaskSummaryGridDataSource } from 'ui-platform-business-elements/lib/managers/TaskSummaryGridDataSource.js';
+import DataRequestHelper from 'ui-platform-business-elements/lib/helpers/DataRequestHelper.js';
+import ComponentConfigBase from 'ui-platform-business-elements/lib/base/component-config-base.js';
+import { TaskSummaryDataManager } from 'ui-platform-business-elements/lib/managers/TaskSummaryDataManager';
+import FileDownloadManager from 'ui-platform-business-elements/lib/managers/FileDownloadManager.js';
+
+import 'ui-platform-elements/lib/elements/bedrock-pubsub/bedrock-pubsub.js';
+import 'ui-platform-elements/lib/elements/pebble-button/pebble-button.js';
+import { ToastManager } from 'ui-platform-elements/lib/managers/toast-manager.js';
+import { DataObjectManager } from 'ui-platform-dataaccess/lib/managers/DataObjectManager.js';
+import { ContextUtils } from 'ui-platform-utils/lib/mdm/ContextUtils';
+import { DALCommonUtils } from 'ui-platform-dataaccess/lib/utils/DALCommonUtils';
+import { AppInstanceManager } from 'ui-platform-elements/lib/managers/app-instance-manager.js';
+
+export class RockTaskSummaryResult extends MixinManager(LitElement).with(RufElement, ComponentConfigBase) {
+    static get styles() {
+        const customStyles = getCustomStylesForLit(['bedrock-style-common']);
+        return [...customStyles, sharedStyles];
+    }
+
+    static get properties() {
+        return {
+            contextData: { type: Object, reflect: true },
+            config: { type: Object },
+            actions: { type: Object },
+            configContext: { type: Object },
+            showAccordion: { type: Boolean },
+            options: { type: Object },
+            spotlightAction: {type: Object},
+            _actionScope: { type: Object },
+            //Grid properties
+            gridConfig: { type: Object },
+            _gridOptions: { type: Object },
+            _gridColumns: { type: Array },
+            emptyGridMessage: { type: String },
+            rowData: { type: Object },
+            pageSize: { type: Number },
+            maxRecordsSize: { type: Number },
+            currentRecordSize: { type: Number },
+            refreshTimestamp: { type: String },
+            sortOrder: { type: Object },
+            filterObject: { type: Object },
+            isGridDataEmpty: { type: Boolean },
+            showEmptyMessage: { type: Boolean },
+            showEmptyMessageWithHeaders: { type: Boolean },
+            _dataSource: { type: Object },
+            _isChildTask: { type: Boolean },
+            _isParentTask: { type: Boolean },
+            _loading: { type: Boolean }
+        };
+    }
+
+    constructor() {
+        super();
+
+        this.contextData = {};
+        this.config = {};
+        this.actions = {
+            'bedrock-grid-filter-changed': {
+                name: 'bedrock-grid-filter-changed'
+            },
+            'bedrock-grid-sort-order-changed': {
+                name: 'bedrock-grid-sort-order-changed'
+            },
+            'grid-toolbar-action-custom-toolbar-event': {
+                name: 'grid-toolbar-action-custom-toolbar-event'
+            }
+        };
+        this.options = {};
+        this._actionScope = {};
+        //Grid Properties
+        this.gridConfig = {};
+        this._gridOptions = {};
+        this._gridColumns = [];
+        this.rowData = {};
+        this.pageSize = 30;
+        this.maxRecordsSize = 100;
+        this.currentRecordSize = 0;
+        this.emptyGridMessage = '';
+        this.refreshTimestamp = '';
+        this.sortOrder = {
+            properties: { id: '_ASC', sortType: '_STRING' }
+        };
+        this.filterObject = {};
+        this._dataSource = {};
+        this.isGridDataEmpty = false;
+        this.showEmptyMessage = false;
+        this.showEmptyMessageWithHeaders = false;
+        this.showAccordion = true;
+        this._isParentTask = false;
+        this._isChildTask = false;
+        this._loading = true;
+        this.configContext = {};
+        this.spotlightAction = {};
+    }
+
+    render() {
+        return html`
+            <pebble-spinner ?active=${this._loading}></pebble-spinner>
+            <pebble-accordion .headerText=${this.configContext.taskTitle} .showAccordion=${this.showAccordion}>
+                <div slot="accordion-content" class="base-grid-structure">
+                    <div class="base-grid-structure-child-1">
+                        <!-- Content for base-grid-structure-child-1 inside accordion content -->
+                    </div>
+                    <div class="base-grid-structure-child-2">
+                        <bedrock-grid
+                            id="childParentTaskGrid"
+                            .columns=${this._gridColumns}
+                            .config=${this.gridConfig}
+                            .refreshTimestamp=${this.refreshTimestamp}
+                            .hideViewSelector=${this.gridConfig.hideViewSelector}
+                            .isRowSelectable=${this.gridConfig.isRowSelectable}
+                            .emptyMessage=${this.emptyGridMessage}
+                            .pageSize=${this.pageSize}
+                            .currentRecordSize=${this.currentRecordSize}
+                            .maxRecords=${this.maxRecordsSize}
+                            .actionScope=${this.contextData}
+                            .showEmptyMessageWithHeaders=${this.showEmptyMessageWithHeaders}
+                            .showEmptyMessage=${this.isGridDataEmpty}
+                            .options=${this._gridOptions}
+                        >
+                        ${!ObjectUtils.isEmpty(this.spotlightAction) ? html`
+                            <div slot="businessactions" class="business-actions-slot custom-business-actions">
+                                 <pebble-button
+                                    id="spotlightaction"
+                                    .icon=${this.spotlightAction.icon}
+                                    class="btn ${this.spotlightAction.class}"
+                                    .buttonText=${this.spotlightAction.text}
+                                    @tap=${this._onCreateButtonTap}
+                                ></pebble-button>
+                            </div>
+                        `: html``}
+                        </bedrock-grid>
+                    </div>
+                </div>
+            </pebble-accordion>
+        `;
+    }
+
+    connectedCallback() {
+        super.connectedCallback();
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+    }
+
+    get grid() {
+        return this.shadowRoot.querySelector('bedrock-grid') || {};
+    }
+
+    attributeChangedCallback(name, oldVal, newVal) {
+        super.attributeChangedCallback(name, oldVal, newVal);
+        this._onAttributeChanged(name);
+    }
+
+    _onAttributeChanged(propertyName) {
+        switch (propertyName) {
+            case 'contextdata':
+                this._onContextDataChange();
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    async _onContextDataChange() {
+        if (!ObjectUtils.isEmpty(this.contextData)) {
+            let context = ObjectUtils.cloneObject(this.contextData);
+            this._actionScope.contextData = this.contextData;
+
+            this.requestConfig('rock-task-summary-result', context);
+        }
+    }
+
+    async onConfigLoaded(componentConfig) {
+        if (componentConfig && ObjectUtils.isValidObjectPath(componentConfig, 'config.gridConfig')) {
+            this.config = componentConfig.config;
+            this.gridConfig = this.config.gridConfig;
+            this._gridColumns = this._getGridColumns(this.gridConfig);
+            await this._getUsers();
+            this._setGridDataSource();
+            this._loading = false;
+        }
+    }
+
+    // Here we get the list of all the users for whom this feature (ml-data-provisioning in this case) is enabled as we want the display names of those users
+    async _getUsers() {
+        const columns = this.gridConfig.itemConfig.fields;
+        const enabledRoles = ObjectUtils.isValidObjectPath(this.config, 'enabledRoles') ? this.config.enabledRoles : [];
+
+        // Only if the gridConfig contains any one of these columns get the userModel as the username is only shown in these columns
+        if (columns.userId || columns.modifiedBy || columns.createdBy) {
+            let propertiesCriterion = [];
+            if(!ObjectUtils.isEmpty(enabledRoles)){
+                propertiesCriterion = [
+                    {
+                        roles: {
+                            exacts: enabledRoles
+                        }
+                    }
+                ];
+            }
+
+            const request = DataRequestHelper.createEntityGetRequestWithFilters('user', [], propertiesCriterion);
+            const response = await DataObjectManager.rest('/data/pass-through/entitymodelservice/get', request);
+
+            if (
+                response.response.status === 'success' &&
+                ObjectUtils.isValidObjectPath(response, 'response.entityModels')
+            ) {
+                const userModels = response.response.entityModels;
+                let users = [];
+
+                userModels.forEach(model => {
+                    const properties = model.properties;
+                    const user = {
+                        id: model.id,
+                        name: properties.firstName + ' ' + properties.lastName,
+                        email: properties.email
+                    };
+                    users.push(user);
+                });
+
+                this.users = users;
+            }
+        }
+        return {};
+    }
+
+    actionCallback(actionName, detail) {
+        switch (actionName) {
+            case 'grid-toolbar-action-custom-toolbar-event': {
+                this._onToolbarEvent(detail);
+                break;
+            }
+            case 'bedrock-grid-filter-changed':
+                {
+                    const filters = detail;
+                    if (!ObjectUtils.isEmpty(filters)) {
+                        const filterKeys = Object.keys(filters);
+                        let propertiesCriterion = [];
+                        let attributesCriterion = [];
+
+                        for (let i = 0; i < filterKeys.length; i++) {
+                            const filterKey = filterKeys[i];
+                            const column = this._gridColumns.find(function (col) {
+                                return col.name === filterKey;
+                            });
+
+                            if (column) {
+                                const propertiesList = Constants.getPropertiesList();
+                                // Getting the externalName of the properties
+                                const queryNamesList = Object.values(propertiesList).map(
+                                    property => property.queryName
+                                );
+                                const searchText = filters[filterKey].filter;
+
+                                // If the filtered column is a property, set propertiesCriterion as criterionType
+                                if (queryNamesList.includes(filterKey)) {
+                                    let propertyCriteria = {};
+                                    if(filters[filterKey].filterType === "date"){
+                                        propertyCriteria = DataRequestHelper.createPropertyCriteriaForDateTime(filters[filterKey], filterKey);
+                                    } else {
+                                        propertyCriteria = DataRequestHelper.createFilterCriteria(
+                                            'propertiesCriterion',
+                                            searchText,
+                                            filterKey,
+                                            null,
+                                            true
+                                        );
+                                        propertyCriteria = propertiesCriterion[0];
+                                    }
+                                    propertiesCriterion.push(propertyCriteria);
+                                }
+                                // If the filtered column is a attribute, set attributesCriterion as criterionType
+                                else {
+                                    const attributeCriteria = DataRequestHelper.createFilterCriteria(
+                                        'attributesCriterion',
+                                        searchText,
+                                        filterKey,
+                                        null,
+                                        true
+                                    );
+                                    attributesCriterion.push(attributeCriteria.attributesCriterion[0]);
+                                }
+                            }
+                        }
+                        this.filterObject.attributesCriterion = attributesCriterion;
+                        this.filterObject.propertiesCriterion = propertiesCriterion;
+                    } else {
+                        this.filterObject = {};
+                    }
+                }
+                break;
+            case 'bedrock-grid-sort-order-changed': {
+                this._onSortOrderChange(detail);
+                break;
+            }
+            default:
+                break;"create-mdp"
+        }
+    }
+
+    _onCreateButtonTap(){
+        let routePath;
+        const actionName = this.spotlightAction.actionName;
+
+        switch (actionName) {
+            case "action-create-mdp":
+                routePath = "match-data-profiler";
+                break;
+            case "action-upload-labeled-data":
+                routePath = "labeled-data-provisioning";
+                break;
+            default:
+                break;
+        }
+
+        if(routePath){
+            const mainApp = OSElements.mainApp;
+            mainApp.changePageRoutePath(routePath);
+        }
+    }
+
+    _onToolbarEvent(detail) {
+        if (ObjectUtils.isValidObjectPath(detail, 'actionInfo.name')) {
+            const actionType = detail.actionInfo.name;
+            const appName = ObjectUtils.isValidObjectPath(detail, 'AppContexts.0.app') ? detail.AppContexts[0].app : '';
+
+            switch (actionType) {
+                case 'download': {
+                    if(appName === "app-match-data-profiler"){
+                        return;
+                    }
+                    this._onFileDownload(detail.actionInfo);
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+    }
+
+    // Method to populate the fileDetails and send it to FileDownloadManager on click of download
+    async _onFileDownload(detail) {
+        let selectedItem = this.grid.selectedItem;
+
+        if(detail.taskId){
+            selectedItem = {};
+            selectedItem.taskId = detail.taskId;
+        }
+
+        if (!ObjectUtils.isEmpty(selectedItem)) {
+            let clonedContextData = ObjectUtils.cloneObject(this.contextData);
+            const attributeNames = ["fileId", "fileName", "taskType"];
+            const type = "tasksummaryobject"
+            const itemContext = [
+                {
+                    id: selectedItem.taskId, 
+                    type: type,
+                    attributeNames: attributeNames
+                }
+            ];
+            clonedContextData[ContextUtils.CONTEXT_TYPE_ITEM] = itemContext;
+            clonedContextData[ContextUtils.CONTEXT_TYPE_VALUE] = [DALCommonUtils.getDefaultValContext()];
+
+            const request = DataRequestHelper.createEntityGetRequest(clonedContextData);
+            const response = await TaskSummaryDataManager.getParentChildTasks(request);
+
+            let isMultipleFileDownload = false;
+            let fileId, fileName, taskType;
+            if (ObjectUtils.isValidObjectPath(response, 'requestObjects.0.data.attributes')) {
+                const attributes = response.requestObjects[0].data.attributes
+                
+                taskType = AttributeUtils.getFirstAttributeValue(attributes.taskType);
+                
+                if(ObjectUtils.isValidObjectPath(attributes, 'fileId.values') && attributes.fileId.values.length > 1){
+                    fileId = AttributeUtils.getAttributeValues(attributes.fileId.values);
+                    fileName = AttributeUtils.getAttributeValues(attributes.fileName.values);
+                    isMultipleFileDownload = true;
+                } else {
+                    fileId = AttributeUtils.getFirstAttributeValue(attributes.fileId);
+                    fileName = AttributeUtils.getFirstAttributeValue(attributes.fileName);
+                }
+            }
+
+            if(ObjectUtils.isEmpty(fileId)){
+                ToastManager.showWarningToast(this.localize('NoFilAvaMsg'));
+                return;
+            }
+            
+            let fileDetails = {};
+            let fileDownloadManager = FileDownloadManager.getInstance();
+            if(isMultipleFileDownload){
+                for(let i = 0; i < fileId.length; i++){
+                    fileDetails = {
+                        fileId: fileId[i],
+                        fileName: fileName[i],
+                        taskType: taskType
+                    };
+                    fileDownloadManager.downloadFile(fileDetails, true, this, true);
+                }
+            } else {
+                fileDetails = {
+                    fileId: fileId,
+                    fileName: fileName,
+                    taskType: taskType
+                };
+                fileDownloadManager.downloadFile(fileDetails, true, this);
+            }
+            
+        } else {
+            ToastManager.showWarningToast(this.localize('TstDwnND'));
+        }
+    }
+
+    // Method to update the sorting order
+    _onSortOrderChange(detail) {
+        if (detail.data.length > 0) {
+            this.sortOrder = [];
+            let path = detail.data[0].path;
+            let dir = detail.data[0].direction;
+            let direction = '_DESC';
+            if (dir == 'asc') {
+                direction = '_ASC';
+            }
+
+            if (path != undefined) {
+                const propertiesList = Constants.getPropertiesList();
+                const queryNamesList = Object.values(propertiesList).map(property => property.queryName);
+                // update the sortOrder based on the column type (property or attribute)
+                if (queryNamesList.includes(path)) {
+                    this.sortOrder.properties = { [path]: direction, sortType: '_STRING' };
+                } else {
+                    this.sortOrder.attributes = { [path]: direction, sortType: '_STRING' };
+                }
+            }
+        }
+    }
+
+    // To set the grid data source
+    async _setGridDataSource() {
+        if (this.grid) {
+            let responseFormatter = data => {
+                if (ObjectUtils.isValidObjectPath(data, 'requestObjects')) {
+                    return this._getAttributeFormattedData(data.requestObjects);
+                }
+                this.showEmptyMessageWithHeaders = true;
+                return [];
+            };
+
+            let cb = () => {
+                this._updateGridInfo();
+            };
+
+            let reqData = {};
+
+            // If the component is used in task summary page (Ex - grm process)
+            if (QueryParamsUtils.getParamValue('id')) {
+                const taskId = QueryParamsUtils.getParamValue('id');
+                reqData = DataRequestHelper.createEntityGetRequestById(taskId, ['tasksummaryobject']);
+
+                const response = await TaskSummaryDataManager.getParentChildTasks(reqData);
+
+                if (ObjectUtils.isValidObjectPath(response, 'requestObjects.0.data.attributes')) {
+                    const attributes = response.requestObjects[0].data.attributes;
+
+                    if (!ObjectUtils.isEmpty(attributes)) {
+                        if (attributes.hasChildTasks) {
+                            this._isParentTask = AttributeUtils.getFirstAttributeValue(attributes.hasChildTasks);
+                        }
+                        if (attributes.parentTaskId) {
+                            this._isChildTask = true;
+                        }
+                    }
+                }
+
+                // If it is neither a parent task nor a child task. i.e, the enablegrmparalleism flag is set to false, then show empty grid message.
+                if (!this._isParentTask && !this._isChildTask) {
+                    return this.getEmptyGridMessage();
+                }
+
+                // Update the request for parent tasks
+                if (this._isParentTask) {
+                    if (this.configContext.taskTitle !== this.localize('ParTsksTxt')) {
+                        reqData = DataRequestHelper.createChildTasksGetRequest(taskId, ['tasksummaryobject']);
+                    }
+                    // Show empty grid message if both selected tab and current task is parent task
+                    else {
+                        return this.getEmptyGridMessage();
+                    }
+                }
+
+                // Show empty grid message if both selected tab and current task is Child tasks
+                if (!this._isParentTask && this.configContext.taskTitle === this.localize('ChiTsksTxt')) {
+                    return this.getEmptyGridMessage();
+                }
+            }
+            // If the component is used in a search page (Ex - search ml data)
+            else {
+                const attributesCriterion = this.options.attributesCriterion;
+                reqData = DataRequestHelper.createEntityGetRequestWithFilters('tasksummaryobject', attributesCriterion);
+            }
+
+            let dataSourceParams = {
+                request: reqData,
+                sortCriterionBuilder: sortData => {
+                    return this._getSortCriterion(sortData);
+                },
+                filterCriterionBuilder: searchText => {
+                    return this._getFilterCriterion(searchText);
+                }
+            };
+            this._dataSource = new TaskSummaryGridDataSource(dataSourceParams);
+
+            let requestHandler = async requestOptions => {
+                let responseData = await this._dataSource.requestHandler(
+                    requestOptions,
+                    this.gridConfig,
+                    this.contextData
+                );
+                if (responseData && responseData.status === 'success') {
+                    return responseData;
+                } else {
+                    return this.getEmptyGridMessage(responseData);
+                }
+            };
+            this.grid.dataSource = new BedrockGridDataSource(
+                requestHandler,
+                responseFormatter,
+                this.pageSize,
+                this.maxRecordsSize,
+                cb
+            );
+            this.isGridDataEmpty = false;
+        }
+    }
+
+    getEmptyGridMessage(response) {
+        this.isGridDataEmpty = true;
+        this.emptyGridMessage = this.localize('NoRelRecMsg', { relationshipTitle: this.configContext.taskTitle });
+        if (!ObjectUtils.isEmpty(response)) {
+            LoggerManager.logError(this, 'Failed to fetch search results for the given criteria', response);
+        }
+        return [];
+    }
+
+    _updateGridInfo() {
+        if (this.grid) {
+            this.currentRecordSize = 0;
+            this.currentRecordSize = this.grid.dataSource.currentRecordSize;
+        }
+
+        this.refreshTimestamp = DateTimeFormatUtils.getLastRefreshed();
+    }
+
+    // Method to format raw data into formatted data to match grid column schema
+    async _getAttributeFormattedData(data) {
+        let formattedData = [];
+
+        if (QueryParamsUtils.getParamValue('id')) {
+            for (let i in data) {
+                const task = data[i];
+                let rowData = {};
+
+                if (!this._isParentTask) {
+                    rowData.id = AttributeUtils.getFirstAttributeValue(task.data.attributes.parentTaskId);
+                } else {
+                    rowData.id = task.id;
+                }
+                rowData.taskType = AttributeUtils.getFirstAttributeValue(task.data.attributes.taskType);
+                formattedData.push(rowData);
+            }
+        } else {
+            for (let i in data) {
+                const task = data[i];
+                const attributes = ObjectUtils.cloneObject(task.data.attributes);
+                const properties = ObjectUtils.cloneObject(task.properties);
+
+                if (ObjectUtils.isEmpty(this.users)) {
+                    await this._getUsers();
+                }
+
+                let rowData = {};
+                rowData.id = i;
+
+                this._gridColumns.forEach(column => {
+                    const columnName = column.name;
+                    if (column.isMetaDataColumn) {
+                        let userObject = {};
+                        switch (columnName) {
+                            // As we can't display the email of the user in the grid, we get the users display name.
+                            case 'createdBy':
+                            case 'modifiedBy':
+                                userObject = {};
+                                if (!ObjectUtils.isEmpty(this.users))
+                                    userObject = this.users.find(user => user.id === properties[columnName]);
+                                properties[columnName] = userObject ? userObject.name : properties[columnName];
+                                break;
+                            case 'createdDate':
+                            case 'modifiedDate':
+                                properties[columnName] = DateTimeFormatUtils.convertFromISODateTime(
+                                    properties[columnName],
+                                    'datetime'
+                                );
+                                break;
+                            default:
+                                break;
+                        }
+                        rowData[columnName] = properties[columnName];
+                    } else {
+                        rowData[columnName] = AttributeUtils.getFirstAttributeValue(attributes[columnName]);
+                        //As we can't display the email of the user in the grid, we get the users display name.
+                        if (columnName === 'userId') {
+                            const userId = AttributeUtils.getFirstAttributeValue(attributes.userId);
+                            if (!ObjectUtils.isEmpty(this.users)) {
+                                const userIdObject = this.users.find(user => user.id === userId);
+                                if (userIdObject) {
+                                    rowData.userId = userIdObject.name;
+                                }
+                            }
+                        }
+                    }
+                });
+
+                formattedData.push(rowData);
+            }
+        }
+        this.currentRecordSize = formattedData.length;
+        return formattedData;
+    }
+
+    // Method to build sort criterion
+    _getSortCriterion() {
+        return this.sortOrder;
+    }
+
+    //Function to filter criterion
+    _getFilterCriterion() {
+        return this.filterObject;
+    }
+
+    //To get columns from config
+    _getGridColumns(gridConfig) {
+        let defaultSort = {};
+        if (ObjectUtils.isValidObjectPath(gridConfig, 'itemConfig.sort.default.0')) {
+            defaultSort = gridConfig.itemConfig.sort.default[0];
+        }
+        let columns = [];
+        if (ObjectUtils.isValidObjectPath(gridConfig, 'itemConfig.fields')) {
+            columns = ObjectUtils.convertToArray(gridConfig.itemConfig.fields);
+        }
+
+        this._gridOptions = {
+            defaultColDef: {
+                sortable: true,
+                resizable: true
+            },
+            customCellRenderers: {
+                pebbleButton: 'pebble-button'
+            }
+        };
+
+        columns.forEach(colItem => {
+            colItem.field = colItem.name;
+            colItem.headerName = colItem.header;
+            colItem.headerTooltip = colItem.header;
+            colItem.linkTemplate = colItem.linkTemplate ? colItem.linkTemplate : '';
+            if (colItem.name === 'createdDate' || colItem.name === 'modifiedDate') {
+                colItem.filterParams = this._fetchDateFilterParams();
+                colItem.isDateColumnFilter = true;
+            }
+
+            if (colItem.displayType === 'image') {
+                colItem.cellRenderer = "pebbleButton";
+                colItem.cellRendererParams = params => {
+                    if (params.data) {
+                        return {
+                            icon: 'pebble-icon:match-data-profiler-download',
+                            onTap: data => {
+                                this._onDataProfileInsightsButtonClick(params);
+                            },
+                            disabled: (params.data.status !== "Completed" || ObjectUtils.isEmpty(params.data.taskId)) ? true : false
+                        };
+                    }
+                };
+            }
+            
+            if (!ObjectUtils.isEmpty(defaultSort) && defaultSort.field && defaultSort.field === colItem.field) {
+                colItem.sort = defaultSort.sortType;
+            }
+        });
+        return columns;
+    }
+
+    /**
+     * Function to download MDP report on icon click
+     */
+    async _onDataProfileInsightsButtonClick(params){
+        let detail = {};
+        if(ObjectUtils.isValidObjectPath(params, 'data.taskId')){
+            detail.taskId = params.data.taskId;
+            // this._onFileDownload(detail);
+           
+            const mainApp = OSElements.mainApp;
+            if (mainApp && detail.taskId) {
+                let queryParams = {
+                    id: detail.taskId
+                };
+                AppInstanceManager.setQueryParamsWithoutEncode(queryParams);
+                mainApp.changePageRoutePath('match-data-profile-report-insights');
+            }
+     
+        }
+    }
+
+    /**
+     * Function to fetch filter params for date filter
+     */
+    _fetchDateFilterParams() {
+        let filterParams = {
+            filterOptions: ['equals', 'greaterThan', 'lessThan', 'inRange'],
+            comparator: (filterLocalDateAtMidnight, cellValue) => {
+                let dateAsString = cellValue;
+                if (dateAsString === null) return -1;
+                let dateParts = dateAsString.split('/');
+                let cellDate = new Date(Number(dateParts[2]), Number(dateParts[1]) - 1, Number(dateParts[0]));
+
+                if (filterLocalDateAtMidnight.getTime() === cellDate.getTime()) {
+                    return 0;
+                }
+
+                if (cellDate < filterLocalDateAtMidnight) {
+                    return -1;
+                }
+
+                if (cellDate > filterLocalDateAtMidnight) {
+                    return 1;
+                }
+            },
+            browserDatePicker: true,
+            suppressAndOrCondition: true,
+            buttons: ['apply'],
+            closeOnApply: true
+        };
+        return filterParams;
+    }
+}
+customElements.define('rock-task-summary-result', RockTaskSummaryResult);
